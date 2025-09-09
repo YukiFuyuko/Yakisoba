@@ -1,47 +1,40 @@
-name: RDP (Debian KDE)
+name: RDP (Linux)
 
 on:
   workflow_dispatch:
 
 jobs:
   secure-rdp:
-    runs-on: ubuntu-latest   # Debian 系
+    runs-on: ubuntu-latest
     timeout-minutes: 3600
 
     steps:
-      - name: Install KDE + xrdp
+      - name: Update system & install xrdp
         run: |
           sudo apt-get update
-          # KDE Plasma 最小構成 + xrdp
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            xrdp \
-            tasksel dbus-x11
+          sudo apt-get install -y xrdp xfce4 xfce4-goodies dbus-x11 x11-xserver-utils
 
-          # KDE Plasma デスクトップ環境をインストール
-          sudo DEBIAN_FRONTEND=noninteractive tasksel install kde-desktop
-
-          # xrdp を有効化
+          # xrdpを有効化
           sudo systemctl enable xrdp
           sudo systemctl restart xrdp
 
       - name: Create RDP User with Secure Password
         run: |
+          # ランダムパスワードを生成
           password=$(openssl rand -base64 12)
           echo "RDP_PASS=$password" >> $GITHUB_ENV
 
+          # ユーザー作成
           sudo useradd -m -s /bin/bash rdpuser
           echo "rdpuser:$password" | sudo chpasswd
           sudo usermod -aG sudo rdpuser
-
-          # KDE をデフォルトに
-          echo "startplasma-x11" | sudo tee /home/rdpuser/.xsession
-          sudo chown rdpuser:rdpuser /home/rdpuser/.xsession
 
       - name: Install Tailscale
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-${GITHUB_RUN_ID}
 
+          # Tailscale IPを取得
           tsIP=$(tailscale ip -4 | head -n1)
           echo "TAILSCALE_IP=$tsIP" >> $GITHUB_ENV
 
@@ -50,7 +43,7 @@ jobs:
           echo "Tailscale IP: $TAILSCALE_IP"
           echo "User: rdpuser"
           echo "Pass: $RDP_PASS"
-          echo "Connect with: mstsc /v:$TAILSCALE_IP (Windows) or xfreerdp /u:rdpuser /p:$RDP_PASS /v:$TAILSCALE_IP (Linux)"
+          echo "Connect with: xfreerdp /u:rdpuser /p:$RDP_PASS /v:$TAILSCALE_IP"
 
       - name: Keep Runner Alive
         run: |
