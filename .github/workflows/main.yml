@@ -12,7 +12,6 @@ jobs:
       - name: Install KDE + VNC server
         run: |
           sudo apt-get update
-          # KDE Plasma 最小構成
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
             kde-plasma-desktop \
             tigervnc-standalone-server \
@@ -30,6 +29,11 @@ jobs:
           # VNC 設定ディレクトリ作成
           sudo -u vncuser mkdir -p /home/vncuser/.vnc
 
+          # VNC パスワードをセット
+          echo "$password" | vncpasswd -f | sudo tee /home/vncuser/.vnc/passwd > /dev/null
+          sudo chown vncuser:vncuser /home/vncuser/.vnc/passwd
+          sudo chmod 600 /home/vncuser/.vnc/passwd
+
           # xstartup に KDE を設定
           cat <<EOF | sudo tee /home/vncuser/.vnc/xstartup
           #!/bin/bash
@@ -40,28 +44,9 @@ jobs:
           sudo chmod +x /home/vncuser/.vnc/xstartup
           sudo chown -R vncuser:vncuser /home/vncuser/.vnc
 
-          # systemd サービスで vncserver 起動
-          cat <<EOF | sudo tee /etc/systemd/system/vncserver@:1.service
-          [Unit]
-          Description=Start TigerVNC server at startup
-          After=syslog.target network.target
-
-          [Service]
-          Type=forking
-          User=vncuser
-          PAMName=login
-          PIDFile=/home/vncuser/.vnc/%H:1.pid
-          ExecStartPre=-/usr/bin/vncserver -kill :1 > /dev/null 2>&1
-          ExecStart=/usr/bin/vncserver :1 -geometry 1280x720 -depth 24 -SecurityTypes VncAuth
-          ExecStop=/usr/bin/vncserver -kill :1
-
-          [Install]
-          WantedBy=multi-user.target
-          EOF
-
-          sudo systemctl daemon-reload
-          sudo systemctl enable vncserver@:1
-          sudo systemctl start vncserver@:1
+      - name: Start VNC server
+        run: |
+          sudo -u vncuser vncserver :1 -geometry 1280x720 -depth 24
 
       - name: Install Tailscale
         run: |
@@ -78,28 +63,9 @@ jobs:
           echo "Username: vncuser"
           echo "Password: $VNC_PASS"
           echo "=================="
-          echo "Use a VNC viewer (e.g. RealVNC, TigerVNC, TightVNC) to connect."
+          echo "Use a VNC viewer (RealVNC, TigerVNC, TightVNC) to connect."
 
       - name: Keep Runner Alive
         run: |
-          while true; do sleep 300; done
-          # Tailscale IPを取得
-          tsIP=$(tailscale ip -4 | head -n1)
-          echo "TAILSCALE_IP=$tsIP" >> $GITHUB_ENV
-
-      - name: Verify RDP Accessibility
-        run: |
-          echo "Tailscale IP: $TAILSCALE_IP"
-          echo "User: rdpuser"
-          echo "Pass: $RDP_PASS"
-          echo "Connect with: xfreerdp /u:rdpuser /p:$RDP_PASS /v:$TAILSCALE_IP"
-
-      - name: Keep Runner Alive
-        run: |
-          echo "=== RDP ACCESS ==="
-          echo "Address: $TAILSCALE_IP"
-          echo "Username: rdpuser"
-          echo "Password: $RDP_PASS"
-          echo "=================="
           while true; do sleep 300; done
           
