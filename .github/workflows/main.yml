@@ -1,52 +1,41 @@
-name: VNC (Debian KDE)
+name: RDP (Debian KDE)
 
 on:
   workflow_dispatch:
 
 jobs:
-  secure-vnc:
-    runs-on: ubuntu-latest
+  secure-rdp:
+    runs-on: ubuntu-latest   # Debian 系
     timeout-minutes: 3600
 
     steps:
-      - name: Install KDE + VNC server
+      - name: Install KDE + xrdp
         run: |
           sudo apt-get update
+          # KDE Plasma 最小構成 + xrdp
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            kde-plasma-desktop \
-            tigervnc-standalone-server \
-            dbus-x11
+            xrdp \
+            tasksel dbus-x11
 
-      - name: Create VNC User with Secure Password
+          # KDE Plasma デスクトップ環境をインストール
+          sudo DEBIAN_FRONTEND=noninteractive tasksel install kde-desktop
+
+          # xrdp を有効化
+          sudo systemctl enable xrdp
+          sudo systemctl restart xrdp
+
+      - name: Create RDP User with Secure Password
         run: |
           password=$(openssl rand -base64 12)
-          echo "VNC_PASS=$password" >> $GITHUB_ENV
+          echo "RDP_PASS=$password" >> $GITHUB_ENV
 
-          sudo useradd -m -s /bin/bash vncuser
-          echo "vncuser:$password" | sudo chpasswd
-          sudo usermod -aG sudo vncuser
+          sudo useradd -m -s /bin/bash rdpuser
+          echo "rdpuser:$password" | sudo chpasswd
+          sudo usermod -aG sudo rdpuser
 
-          # VNC 設定ディレクトリ作成
-          sudo -u vncuser mkdir -p /home/vncuser/.vnc
-
-          # VNC パスワードをセット
-          echo "$password" | vncpasswd -f | sudo tee /home/vncuser/.vnc/passwd > /dev/null
-          sudo chown vncuser:vncuser /home/vncuser/.vnc/passwd
-          sudo chmod 600 /home/vncuser/.vnc/passwd
-
-          # xstartup に KDE を設定
-          cat <<EOF | sudo tee /home/vncuser/.vnc/xstartup
-          #!/bin/bash
-          unset SESSION_MANAGER
-          unset DBUS_SESSION_BUS_ADDRESS
-          exec startplasma-x11
-          EOF
-          sudo chmod +x /home/vncuser/.vnc/xstartup
-          sudo chown -R vncuser:vncuser /home/vncuser/.vnc
-
-      - name: Start VNC server
-        run: |
-          sudo -u vncuser vncserver :1 -geometry 1280x720 -depth 24
+          # KDE をデフォルトに
+          echo "startplasma-x11" | sudo tee /home/rdpuser/.xsession
+          sudo chown rdpuser:rdpuser /home/rdpuser/.xsession
 
       - name: Install Tailscale
         run: |
@@ -56,16 +45,19 @@ jobs:
           tsIP=$(tailscale ip -4 | head -n1)
           echo "TAILSCALE_IP=$tsIP" >> $GITHUB_ENV
 
-      - name: Show VNC Info
+      - name: Verify RDP Accessibility
         run: |
-          echo "=== VNC ACCESS ==="
-          echo "Address: $TAILSCALE_IP:5901"
-          echo "Username: vncuser"
-          echo "Password: $VNC_PASS"
-          echo "=================="
-          echo "Use a VNC viewer (RealVNC, TigerVNC, TightVNC) to connect."
+          echo "Tailscale IP: $TAILSCALE_IP"
+          echo "User: rdpuser"
+          echo "Pass: $RDP_PASS"
+          echo "Connect with: mstsc /v:$TAILSCALE_IP (Windows) or xfreerdp /u:rdpuser /p:$RDP_PASS /v:$TAILSCALE_IP (Linux)"
 
       - name: Keep Runner Alive
         run: |
+          echo "=== RDP ACCESS ==="
+          echo "Address: $TAILSCALE_IP"
+          echo "Username: rdpuser"
+          echo "Password: $RDP_PASS"
+          echo "=================="
           while true; do sleep 300; done
           
